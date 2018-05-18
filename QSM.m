@@ -22,7 +22,7 @@ function varargout = QSM(varargin)
 
 % Edit the above text to modify the response to help QSM
 
-% Last Modified by GUIDE v2.5 06-May-2018 14:55:43
+% Last Modified by GUIDE v2.5 18-May-2018 10:07:29
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -63,7 +63,27 @@ guidata(hObject, handles);
 addpath('utils')
 addpath('MEDI_toolbox');
 addpath('view3dgui');
-
+path1 = getenv('PATH')
+path1 = [path1 ':/Users/xinmiao/Documents/softwares/mricron']
+setenv('PATH', path1)
+path1 = getenv('PATH')
+path1 = [path1 ':/usr/local/fsl/bin']
+setenv('PATH', path1)
+setenv('FSLDIR','/usr/local/fsl');  % this to tell where FSL folder is
+setenv('FSLOUTPUTTYPE', 'NIFTI_GZ'); % this to tell what the output type would be
+handles.iField = [];
+handles.voxel_size = [];
+handles.matrix_size = [];
+handles.CF = [];
+handles.delta_TE = [];
+handles.B0_dir = [];
+handles.TE = [];
+handles.bigMask = [];
+handles.iFreq_raw = [];
+handles.N_std = [];
+handles.iFreq = [];
+handles.RDF = [];
+guidata(hObject, handles);
 
 
 % --- Outputs from this function are returned to the command line.
@@ -77,30 +97,43 @@ function varargout = QSM_OutputFcn(hObject, eventdata, handles)
 varargout{1} = handles.output;
 
 
+% --- Executes on button press in choseBaseDir.
+function choseBaseDir_Callback(hObject, eventdata, handles)
+% hObject    handle to choseBaseDir (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+baseDCMdir = uigetdir(matlabroot,'Where are the dicoms?');
+set(handles.edit_baseDCMdir, 'String', baseDCMdir);
+baseNIIdir = uigetdir(matlabroot,'Where are the nifties?');
+set(handles.edit_baseNIIdir, 'String', baseNIIdir);
+baseMATdir = uigetdir(matlabroot,'Where are the mat files?');
+set(handles.edit_baseMATdir, 'String', baseMATdir);
+
+% Update handles.structure
+handles.baseDCMdir = baseDCMdir;
+handles.baseNIIdir = baseNIIdir;
+handles.baseMATdir = baseMATdir;
+guidata(hObject, handles); 
+
 
 % --- Executes on button press in convertDCM2NII.
 function convertDCM2NII_Callback(hObject, eventdata, handles)
 % hObject    handle to convertDCM2NII (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-te1DCMdir = uigetdir(matlabroot,'Where are the first echo dicoms?');
-set(handles.edit1, 'String', te1DCMdir);
-allNIIdir = uigetdir(matlabroot,'Where are the NII files?');
-cmd = ['dcm2nii -n y -o ' allNIIdir ' ' te1DCMdir];
+te1DCMdir = [handles.baseDCMdir '/echo1'];
+cmd = ['dcm2nii -n y -o ' handles.baseNIIdir ' ' te1DCMdir];
 [status,~] = system(cmd);
 if(status==0)
-    magNIIfile = [allNIIdir '/qsmMag.nii.gz'];
-    result = dir([allNIIdir '/o*.nii.gz']);
-    movefile([allNIIdir '/' result.name], magNIIfile);
-    set(handles.edit2, 'String', magNIIfile);
+    magNIIfile = [handles.baseNIIdir '/qsmMag.nii.gz'];
+    result = dir([handles.baseNIIdir '/o*.nii.gz']);
+    movefile([handles.baseNIIdir '/' result.name], magNIIfile);
+    set(handles.edit_magNIIfile, 'String', magNIIfile);
 else
-    set(handles.edit2, 'String', 'Fail!');
-    magNIIfile = [];
+    set(handles.edit_magNIIfile, 'String', 'Fail!');
 end
+
 % Update handles.structure
-handles.te1DCMdir = te1DCMdir;
-handles.allNIIdir = allNIIdir;
-handles.magNIIfile = magNIIfile;
 guidata(hObject, handles); 
 
 % --- Executes on button press in betBrainExtraction.
@@ -108,22 +141,25 @@ function betBrainExtraction_Callback(hObject, eventdata, handles)
 % hObject    handle to betBrainExtraction (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-setenv('FSLDIR','/usr/local/fsl');  % this to tell where FSL folder is
-setenv('FSLOUTPUTTYPE', 'NIFTI_GZ'); % this to tell what the output type would be
-maskNIIfile = [handles.allNIIdir '/qsm_mask.nii.gz'];
-cmd = ['bet ' handles.magNIIfile ' ' handles.allNIIdir '/qsm.nii.gz -m'];
+magNIIfile = [handles.baseNIIdir '/qsmMag.nii.gz'];
+maskNIIfile = [handles.baseNIIdir '/qsm_mask.nii.gz'];
+cmd = ['bet ' magNIIfile ' ' handles.baseNIIdir '/qsm.nii.gz -m'];
 [status,~] = system(cmd);
 if(status==0)
     temp = load_untouch_nii_gz(maskNIIfile);
     temp= logical(temp.img);
-    handles.bigMask = flip(temp,2);
-    set(handles.edit5, 'String', maskNIIfile);
+    Mask = flip(flip(temp,2),1);
+    set(handles.edit_maskNIIfile, 'String', maskNIIfile);
+    
+    maskMATfile = [handles.baseMATdir '/bigMask.mat'];
+    save(maskMATfile,'Mask');
+    set(handles.edit_maskMATfile, 'String', maskMATfile);
 else
-    set(handles.edit5, 'String', 'Fail!');
-    maskNIIfile = [];
+    set(handles.edit_maskNIIfile, 'String', 'Fail!');
 end
+
 % Update handles structure
-handles.maskNIIfile = maskNIIfile;
+handles.bigMask = Mask;
 guidata(hObject, handles);
 
 
@@ -132,35 +168,29 @@ function convertDCM2MAT_Callback(hObject, eventdata, handles)
 % hObject    handle to convertDCM2MAT (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-allDCMdir = uigetdir(matlabroot,'Where are the dicoms?');
-set(handles.edit3, 'String', allDCMdir);
-allMATdir = uigetdir(matlabroot,'Where are the MAT files?');
-rawMATfile = [allMATdir '/raw.mat'];
-% [iField,voxel_size,matrix_size,CF,delta_TE,TE,B0_dir]=Read_Philips_DICOM_xm(allDCMdir);
-load('/Users/xinmiao/Documents/research/data/QSM_raw_mat/SCD053/raw.mat');
-save(rawMATfile,'iField','voxel_size','matrix_size','CF','delta_TE','TE','B0_dir');
-set(handles.edit4, 'String', rawMATfile);
+allDCMdir = [handles.baseDCMdir '/all'];
+rawMATfile = [handles.baseMATdir '/raw.mat'];
+[iField,voxel_size,matrix_size,CF,delta_TE,TE,B0_dir]=Read_Philips_DICOM_xm(allDCMdir);
+% load('/Users/xinmiao/Documents/research/data/QSM_raw_mat/SCD053/raw.mat');
+iField = flip(iField,3);
+B0_dir(3) = -B0_dir(3);
+view3dgui(abs(iField(:,:,:,1)), voxel_size);
+keyboard;
 
-Mask = genMask_xm(abs(iField(:,:,:,1)), voxel_size,10,8); 
-handles.bigMask = handles.bigMask .* Mask;
+save(rawMATfile,'iField','voxel_size','matrix_size','CF','delta_TE','TE','B0_dir');
+set(handles.edit_rawMATfile, 'String', rawMATfile);
 
 % Update handles structure
-handles.iField = iField; clear iField;
-handles.voxel_size = voxel_size; clear voxel_size;
-handles.matrix_size = matrix_size; clear matrix_size;
-handles.CF = CF; clear CF;
-handles.delta_TE = delta_TE; clear delta_TE;
-handles.TE = TE; clear TE;
-handles.B0_dir = B0_dir; clear B0_dir;
-handles.allDCMdir = allDCMdir;
-handles.allMATdir = allMATdir;
+handles.iField = iField;
+handles.voxel_size = voxel_size;
+handles.matrix_size = matrix_size;
+handles.CF = CF;
+handles.delta_TE = delta_TE;
+handles.B0_dir = B0_dir;
+handles.TE = TE;
 guidata(hObject,handles);
 
-view3dgui(abs(handles.iField(:,:,:,1)).*handles.bigMask, handles.voxel_size);
-keyboard;
-Mask = handles.bigMask;
-bigMaskFile = [handles.allMATdir '/bigMask.mat'];
-save(bigMaskFile, 'Mask');clear Mask;
+
 
 
 % --- Executes on button press in eddyCurrentCorrection.
@@ -168,14 +198,15 @@ function eddyCurrentCorrection_Callback(hObject, eventdata, handles)
 % hObject    handle to eddyCurrentCorrection (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-load([handles.allMATdir '/raw.mat']);
-iField1 = eddy_current_cor_hyper(handles.iField);
+
+rawMATfile = [handles.baseMATdir '/raw.mat'];
+load(rawMATfile);
+iField1 = eddy_current_cor_hyper(iField);
 keyboard;
 iField = iField1; clear iField1;
-save([handles.allMATdir '/raw.mat'],'iField','voxel_size','matrix_size','CF','delta_TE','TE','B0_dir');
-
+save(rawMATfile,'iField','voxel_size','matrix_size','CF','delta_TE','TE','B0_dir');
+set(handles.edit_rawMATfile3, 'String', 'Saved Corrected version!');
 % Update handles structure
-handles.iField = iField; clear iField;
 guidata(hObject,handles);
 
 
@@ -184,13 +215,45 @@ function fitB0Field_Callback(hObject, eventdata, handles)
 % hObject    handle to fitB0Field (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-[iFreq_raw, N_std] = Fit_ppm_complex(handles.iField.*repmat(handles.bigMask,[1 1 1 4]));
+if isempty(handles.iField)
+    rawMATfile = [handles.baseMATdir '/raw.mat'];
+    load(rawMATfile);
+    handles.iField = iField;
+    handles.voxel_size = voxel_size;
+    handles.matrix_size = matrix_size;
+    handles.CF = CF;
+    handles.delta_TE = delta_TE;
+    handles.B0_dir = B0_dir;
+    handles.TE = TE;
+    guidata(hObject,handles);
+end
+
+if isempty(handles.bigMask)
+    bigMaskFile = [handles.baseMATdir '/bigMask.mat'];
+    load(bigMaskFile);
+    handles.bigMask = Mask;
+    guidata(hObject,handles);
+end
+
+Mask2 = genMask_xm(abs(handles.iField(:,:,:,1)), handles.voxel_size,10,8); 
+Mask = logical(handles.bigMask.*Mask2);
+view3dgui(abs(handles.iField(:,:,:,1)).*Mask, handles.voxel_size);
+keyboard;
+handles.bigMask = Mask;
+bigMaskFile = [handles.baseMATdir '/bigMask.mat'];
+save(bigMaskFile,'Mask');
+
+[iFreq_raw, N_std] = Fit_ppm_complex(handles.iField.*repmat(Mask,[1 1 1 4]));
 view3dgui(iFreq_raw, handles.voxel_size);
 view3dgui(N_std, handles.voxel_size);
-
+keyboard;
 % Update handles structure
-handles.iFreq_raw = iFreq_raw; clear iFreq_raw;
-handles.N_std = N_std; clear N_std;
+ifreqrawMATfile = [handles.baseMATdir '/iFreq_raw.mat'];
+save(ifreqrawMATfile,'iFreq_raw', 'N_std');
+set(handles.edit_ifreqrawMATfile, 'String', ifreqrawMATfile);
+
+handles.iFreq_raw = iFreq_raw;
+handles.N_std = N_std;
 guidata(hObject,handles);
 
 
@@ -199,10 +262,26 @@ function unwrapPhase_Callback(hObject, eventdata, handles)
 % hObject    handle to unwrapPhase (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+if isempty(handles.iFreq_raw)
+    ifreqrawMATfile = [handles.baseMATdir '/iFreq_raw.mat'];
+    load(ifreqrawMATfile);
+    handles.iFreq_raw = iFreq_raw;
+    guidata(hObject,handles);
+end
+
+if isempty(handles.bigMask)
+    bigMaskFile = [handles.baseMATdir '/bigMask.mat'];
+    load(bigMaskFile);
+    handles.bigMask = Mask;
+    guidata(hObject,handles);
+end
 
 [iFreq] = unwrapLaplacian(handles.iFreq_raw.*handles.bigMask, handles.matrix_size, handles.voxel_size);
 view3dgui(iFreq, handles.voxel_size);
 
+ifreqMATfile = [handles.baseMATdir '/iFreq.mat'];
+save(ifreqMATfile,'iFreq');
+set(handles.edit_ifreqMATfile,'String', ifreqMATfile);
 % Update handles structure
 handles.iFreq = iFreq; clear iFreq;
 guidata(hObject,handles);
@@ -213,14 +292,31 @@ function extractNoiseMask_Callback(hObject, eventdata, handles)
 % hObject    handle to extractNoiseMask (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-threshold = 0.02;
+if isempty(handles.iFreq_raw)
+    ifreqrawMATfile = [handles.baseMATdir '/iFreq_raw.mat'];
+    load(ifreqrawMATfile);
+    handles.iFreq_raw = iFreq_raw;
+    handles.N_std = N_std;
+    guidata(hObject,handles);
+end
+
+if isempty(handles.bigMask)
+    bigMaskFile = [handles.baseMATdir '/bigMask.mat'];
+    load(bigMaskFile);
+    handles.bigMask = Mask;
+    guidata(hObject,handles);
+end
+
+threshold = 0.002;
 noiseMask = handles.bigMask;
 noiseMask(handles.N_std > threshold) = 0;
 noiseMask = logical(noiseMask);
 Mask = noiseMask;
+view3dgui(~Mask,[0.45 0.45 1.3]);
 
-noiseMaskFile = [handles.allMATdir '/noiseMask.mat'];
+noiseMaskFile = [handles.baseMATdir '/noiseMask.mat'];
 save(noiseMaskFile, 'Mask');clear Mask;
+set(handles.edit_edit_noisemaskMATfile,'String', noiseMaskFile);
 
 % Update handles structure
 handles.noiseMask = noiseMask; clear noiseMask;
@@ -232,10 +328,49 @@ function removeBGField_Callback(hObject, eventdata, handles)
 % hObject    handle to removeBGField (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+if isempty(handles.iField)
+    rawMATfile = [handles.baseMATdir '/raw.mat'];
+    load(rawMATfile);
+    handles.iField = iField;
+    handles.voxel_size = voxel_size;
+    handles.matrix_size = matrix_size;
+    handles.CF = CF;
+    handles.delta_TE = delta_TE;
+    handles.B0_dir = B0_dir;
+    handles.TE = TE;
+    guidata(hObject,handles);
+end
+
+if isempty(handles.bigMask)
+    bigMaskFile = [handles.baseMATdir '/bigMask.mat'];
+    load(bigMaskFile);
+    handles.bigMask = Mask;
+    guidata(hObject,handles);
+end
+
+if isempty(handles.iFreq_raw) || isempty(handles.N_std)
+    ifreqrawMATfile = [handles.baseMATdir '/iFreq_raw.mat'];
+    load(ifreqrawMATfile);
+    handles.iFreq_raw = iFreq_raw;
+    handles.N_std = N_std;
+    guidata(hObject,handles);
+end
+
+if isempty(handles.iFreq)
+    ifreqMATfile = [handles.baseMATdir '/iFreq.mat'];
+    load(ifreqMATfile);
+    handles.iFreq = iFreq;
+    guidata(hObject,handles);
+end
+
 [RDF,~] = PDF(handles.iFreq, handles.N_std, handles.bigMask,...
     handles.matrix_size, handles.voxel_size, handles.B0_dir);
 view3dgui(RDF, handles.voxel_size);
 keyboard;
+
+RDFFile = [handles.baseMATdir '/RDF.mat'];
+save(RDFFile, 'RDF');
+set(handles.edit_rdfMATfile,'String',RDFFile);
 
 % Update handles structure
 handles.RDF = RDF; clear RDF;
@@ -253,12 +388,12 @@ QSML1= admm_qsm(nfm, handles.matrix_size, handles.noiseMask, handles.voxel_size,
 view3dgui(QSML1, handles.voxel_size);
 keyboard;
 
-QSML1File = [handles.allMATdir '/QSML1.mat'];
+QSML1File = [handles.baseMATdir '/QSML1.mat'];
 save(QSML1File, 'QSML1');
+set(handles.edit_qsmMATfile,'String',QSML1File);
 
 % Update handles structure
 handles.QSML1 = QSML1; clear QSML1;
-handles.QSML1File = QSML1File;
 guidata(hObject,handles);
 
 % --- Executes on button press in registerT12QSM.
@@ -297,8 +432,8 @@ set(handles.edit10, 'String', num2str(roi_std));
 
 
 % --- Executes during object creation, after setting all properties.
-function edit1_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to edit1 (see GCBO)
+function edit_baseDCMdir_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_baseDCMdir (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 
@@ -310,8 +445,8 @@ end
 
 
 % --- Executes during object creation, after setting all properties.
-function edit2_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to edit2 (see GCBO)
+function edit_te1DCMdir_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_te1DCMdir (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 
@@ -323,8 +458,8 @@ end
 
 
 % --- Executes during object creation, after setting all properties.
-function edit3_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to edit3 (see GCBO)
+function edit_allDCMdir_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_allDCMdir (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 
@@ -336,8 +471,8 @@ end
 
 
 % --- Executes during object creation, after setting all properties.
-function edit4_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to edit4 (see GCBO)
+function edit_rawMATfile2_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_rawMATfile2 (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 
@@ -349,8 +484,8 @@ function edit4_CreateFcn(hObject, eventdata, handles)
 
 
 % --- Executes during object creation, after setting all properties.
-function edit5_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to edit5 (see GCBO)
+function edit_magNIIfile_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_magNIIfile (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 
@@ -486,6 +621,346 @@ function edit10_Callback(hObject, eventdata, handles)
 % --- Executes during object creation, after setting all properties.
 function edit10_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to edit10 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_baseNIIdir_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_baseNIIdir (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_baseNIIdir as text
+%        str2double(get(hObject,'String')) returns contents of edit_baseNIIdir as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_baseNIIdir_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_baseNIIdir (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_baseMATdir_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_baseMATdir (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_baseMATdir as text
+%        str2double(get(hObject,'String')) returns contents of edit_baseMATdir as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_baseMATdir_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_baseMATdir (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_baseDCMdir_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_baseDCMdir (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_baseDCMdir as text
+%        str2double(get(hObject,'String')) returns contents of edit_baseDCMdir as a double
+
+
+
+function edit_te1DCMdir_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_te1DCMdir (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_te1DCMdir as text
+%        str2double(get(hObject,'String')) returns contents of edit_te1DCMdir as a double
+
+
+
+function edit_allDCMdir_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_allDCMdir (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_allDCMdir as text
+%        str2double(get(hObject,'String')) returns contents of edit_allDCMdir as a double
+
+
+
+function edit_magNIIfile_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_magNIIfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_magNIIfile as text
+%        str2double(get(hObject,'String')) returns contents of edit_magNIIfile as a double
+
+
+
+function edit_magNIIfile2_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_magNIIfile2 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_magNIIfile2 as text
+%        str2double(get(hObject,'String')) returns contents of edit_magNIIfile2 as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_magNIIfile2_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_magNIIfile2 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_maskNIIfile_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_maskNIIfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_maskNIIfile as text
+%        str2double(get(hObject,'String')) returns contents of edit_maskNIIfile as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_maskNIIfile_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_maskNIIfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_rawMATfile_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_rawMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_rawMATfile as text
+%        str2double(get(hObject,'String')) returns contents of edit_rawMATfile as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_rawMATfile_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_rawMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_rawMATfile2_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_rawMATfile2 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_rawMATfile2 as text
+%        str2double(get(hObject,'String')) returns contents of edit_rawMATfile2 as a double
+
+
+
+function edit_rawMATfile3_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_rawMATfile3 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_rawMATfile3 as text
+%        str2double(get(hObject,'String')) returns contents of edit_rawMATfile3 as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_rawMATfile3_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_rawMATfile3 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on button press in pushbutton14.
+function pushbutton14_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton14 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+% --- Executes on button press in pushbutton15.
+function pushbutton15_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton15 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+function edit_ifreqrawMATfile_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_ifreqrawMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_ifreqrawMATfile as text
+%        str2double(get(hObject,'String')) returns contents of edit_ifreqrawMATfile as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_ifreqrawMATfile_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_ifreqrawMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_ifreqMATfile_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_ifreqMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_ifreqMATfile as text
+%        str2double(get(hObject,'String')) returns contents of edit_ifreqMATfile as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_ifreqMATfile_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_ifreqMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_maskMATfile_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_maskMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_maskMATfile as text
+%        str2double(get(hObject,'String')) returns contents of edit_maskMATfile as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_maskMATfile_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_maskMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_noisemaskMATfile_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_noisemaskMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_noisemaskMATfile as text
+%        str2double(get(hObject,'String')) returns contents of edit_noisemaskMATfile as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_noisemaskMATfile_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_noisemaskMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_RDFMATfile_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_RDFMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_RDFMATfile as text
+%        str2double(get(hObject,'String')) returns contents of edit_RDFMATfile as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_RDFMATfile_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_RDFMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_qsmMATfile_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_qsmMATfile (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_qsmMATfile as text
+%        str2double(get(hObject,'String')) returns contents of edit_qsmMATfile as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_qsmMATfile_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_qsmMATfile (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 
